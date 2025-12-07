@@ -1,19 +1,40 @@
-import * as core from '@actions/core'
-import {wait} from './wait'
+import * as core from '@actions/core';
+import { readFile } from 'fs';
+import { runContainerScript } from './container';
 
 async function run(): Promise<void> {
   try {
-    const ms: string = core.getInput('milliseconds')
-    core.debug(`Waiting ${ms} milliseconds ...`) // debug is only output if you set the secret `ACTIONS_STEP_DEBUG` to true
+    const container = core.getInput('container');
+    const scriptPath = core.getInput('script-path');
 
-    core.debug(new Date().toTimeString())
-    await wait(parseInt(ms, 10))
-    core.debug(new Date().toTimeString())
+    const scriptToExecute = await new Promise<string>((resolve, reject) => {
+      readFile(scriptPath, 'utf8', (err, data) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(data);
+        }
+      });
+    });
 
-    core.setOutput('time', new Date().toTimeString())
+    // Run the main script on the modified container
+    const mainOutput = await runContainerScript(container, scriptToExecute);
+    core.info('Main script output:');
+    core.info(mainOutput);
+
+    // Perform assertions on the output as needed
+    if (mainOutput.includes('RESULT: ALL TESTS PASSED')) {
+      core.info('Docker test passed!');
+    } else {
+      core.error('Docker test failed!');
+      core.setFailed('Docker test failed!');
+    }
   } catch (error) {
-    if (error instanceof Error) core.setFailed(error.message)
+    if (error instanceof Error) {
+      core.error(error.message);
+      core.setFailed(error.message);
+    }
   }
 }
 
-run()
+run();
